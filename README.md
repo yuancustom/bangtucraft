@@ -1,6 +1,6 @@
 # 帮帮图图（BangtuCraft）
 
-面向建筑图纸理解的网页 Agent，采用单 Agent + Skills + MCP 架构。支持最多 3 个本地账号、独立工作空间、流式对话、工具审批与文件交付。新会话首轮成功问答后自动概括命名；手动名称保留。设计与进度见 `docs/01-plan.md`、`docs/adr/`。
+面向建筑图纸理解的网页 Agent，采用单 Agent + Skills + MCP 架构。默认免登录进入共享的本地工作空间，也可配置最多 3 个独立账号。支持流式对话、工具审批与文件交付。新会话首轮成功问答后自动概括命名；手动名称保留。设计与进度见 `docs/01-plan.md`、`docs/adr/`。
 
 ## 首次准备
 
@@ -13,7 +13,7 @@
 
 - 正式运行：`corepack pnpm start`，浏览器打开 http://127.0.0.1:8787 。会先构建前端，再启动服务和搜索 MCP。
 - 开发模式：`corepack pnpm dev`，浏览器打开 http://127.0.0.1:5173 。
-- 第一次打开时注册账号，最多 3 个。
+- 默认打开即用，无需注册或输入账号；内网访问者共享会话与文件。`.env` 的 `LOCAL_USER_ID` 可指定已有用户，保留其历史和模型；`AUTH_MODE=accounts` 可恢复独立账号模式。
 
 ## 本地 Docker 混合部署（Windows）
 
@@ -21,7 +21,7 @@
 
 1. 按首次准备填写根目录 `.env`，确认 `HTTPS_PROXY` 是当前可用的宿主机代理地址。
 2. 停止占用 8787/8790 的旧实例，执行 `powershell -NoProfile -ExecutionPolicy Bypass -File deploy/Start-Agent.ps1`，隐藏启动 Windows 执行端；日志和 PID 位于忽略提交的 `data/`。
-3. 执行 `docker compose up -d --build`。打开 `http://localhost:18878`；同一内网使用 `http://<宿主机IPv4>:18878`，保留原账号。
+3. 执行 `docker compose up -d --build`。打开 `http://localhost:18878`；同一内网使用 `http://<宿主机IPv4>:18878`，直接进入原工作空间。
 4. 需要登录后自启时执行 `powershell -NoProfile -ExecutionPolicy Bypass -File deploy/Enable-Autostart.ps1`。Docker Desktop 自身需开启登录启动，容器配置为 `unless-stopped`。
 
 执行端监听 8787，Docker 通过 `host.docker.internal` 访问它。反向代理保留 Host/Origin，关闭 SSE 缓冲，支持 200MB 上传。可用进程环境变量 `BANGTUTU_PORT` 改 Docker 入口端口。`docker compose ps` 查看健康状态；`docker compose down` 只停止网页容器，不删除 Windows 数据。

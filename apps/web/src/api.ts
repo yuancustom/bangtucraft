@@ -35,7 +35,7 @@ export interface User {
 }
 
 export const api = {
-  authStatus: () => request<{ user: User | null; canRegister: boolean; maxUsers: number }>("GET", "/api/auth/status"),
+  authStatus: () => request<{ user: User | null; loginRequired: boolean; canRegister: boolean; maxUsers: number }>("GET", "/api/auth/status"),
   login: (username: string, password: string) => request<{ user: User }>("POST", "/api/auth/login", { username, password }),
   register: (username: string, password: string) => request<{ user: User }>("POST", "/api/auth/register", { username, password }),
   logout: () => request("POST", "/api/auth/logout"),

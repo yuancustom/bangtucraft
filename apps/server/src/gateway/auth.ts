@@ -42,6 +42,7 @@ const tokenHash = (token: string) => createHash("sha256").update(token).digest("
 export class AuthStore {
   private client: Client;
   private ready: Promise<void>;
+  private localUsers = new Map<string, Promise<User>>();
 
   constructor(file: string) {
     this.client = createClient({ url: `file:${file}` });
@@ -60,6 +61,39 @@ export class AuthStore {
     await this.ready;
     const r = await this.client.execute("SELECT COUNT(*) AS n FROM users");
     return Number(r.rows[0]!.n);
+  }
+
+  /** 免登录模式固定复用已有工作空间；空库只创建一个本地用户。 */
+  localUser(userId?: string): Promise<User> {
+    const key = userId ?? "";
+    const cached = this.localUsers.get(key);
+    if (cached) return cached;
+    const pending = this.resolveLocalUser(userId);
+    this.localUsers.set(key, pending);
+    return pending;
+  }
+
+  private async resolveLocalUser(userId?: string): Promise<User> {
+    await this.ready;
+    const tx = await this.client.transaction("write");
+    try {
+      const result = await tx.execute(userId
+        ? { sql: "SELECT id, username FROM users WHERE id = ?", args: [userId] }
+        : "SELECT id, username FROM users ORDER BY created_at, id LIMIT 1");
+      const row = result.rows[0];
+      if (userId && !row) throw new Error("LOCAL_USER_ID 对应的工作空间用户不存在，请检查配置");
+      const user = row ? { id: String(row.id), username: String(row.username) } : { id: randomUUID(), username: "本地工作空间" };
+      if (!row) {
+        await tx.execute({
+          sql: "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+          args: [user.id, user.username, "", new Date().toISOString()],
+        });
+      }
+      await tx.commit();
+      return user;
+    } finally {
+      tx.close();
+    }
   }
 
   async register(username: string, password: string): Promise<User> {

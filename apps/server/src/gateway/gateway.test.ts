@@ -9,7 +9,7 @@ import { modelsFileSchema } from "../models/schema.ts";
 import { ModelRegistry } from "../models/registry.ts";
 import { Redactor } from "../redact.ts";
 import { fakeModelsFile } from "../test-utils/fake-openai.ts";
-import { AuthStore, MAX_USERS } from "./auth.ts";
+import { AuthStore, MAX_USERS, type User } from "./auth.ts";
 import { CompareStore } from "./compare.ts";
 import { OriginalImporter } from "./original.ts";
 import { RunHub } from "./run-hub.ts";
@@ -79,13 +79,14 @@ describe("RunHub", () => {
   });
 });
 
-function makeApp(workers: WorkerCaller) {
-  const auth = new AuthStore(path.join(dir, "identity.db"));
-  closers.push(() => auth.close());
+function makeApp(workers: WorkerCaller, options: { localUser?: User; auth?: AuthStore } = {}) {
+  const auth = options.auth ?? new AuthStore(path.join(dir, "identity.db"));
+  if (!options.auth) closers.push(() => auth.close());
   const hub = new RunHub();
   const registry = new ModelRegistry(modelsFileSchema.parse(fakeModelsFile("http://127.0.0.1:1/v1")), { FAKE_API_KEY: "k".repeat(20) });
   const app = createApp({
     auth,
+    localUser: options.localUser,
     workers,
     hub,
     registry,
@@ -96,7 +97,7 @@ function makeApp(workers: WorkerCaller) {
     original: new OriginalImporter(undefined, path.join(dir, "snap")),
     compares: new CompareStore((u) => path.join(dir, "users", u, "compares")),
   });
-  return { app, hub };
+  return { app, hub, auth };
 }
 
 async function login(app: ReturnType<typeof createApp>, username: string, register = true) {
@@ -111,6 +112,53 @@ async function login(app: ReturnType<typeof createApp>, username: string, regist
 }
 
 describe("网关接口", () => {
+  it("免登录访问复用原用户的会话、文件和 SSE，旧 Cookie 不切换工作空间", async () => {
+    const calls: [string, string][] = [];
+    const workers: WorkerCaller = { call: async (userId, method) => {
+      calls.push([userId, method]);
+      return [{ id: "existing-thread", title: "原有建模会话" }] as never;
+    } };
+    const seeded = makeApp(workers);
+    const original = await login(seeded.app, "original");
+    const other = await login(seeded.app, "other");
+    const localUser = await seeded.auth.localUser(original.user.id);
+    const { app, hub } = makeApp(workers, { auth: seeded.auth, localUser });
+    for (const headers of [new Headers(), new Headers({ cookie: other.cookie })]) {
+      const status = await (await app.request("/api/auth/status", { headers })).json();
+      expect(status).toMatchObject({ user: localUser, loginRequired: false, canRegister: false });
+      const sessions = await (await app.request("/api/sessions", { headers })).json();
+      expect(sessions.sessions[0].title).toBe("原有建模会话");
+      await app.request("/api/sessions/existing-thread/messages", { headers });
+    }
+    expect((await app.request("/api/sessions", { method: "POST", body: "{}", headers: { "Content-Type": "application/json" } })).status).toBe(200);
+    expect(calls.every(([id]) => id === original.user.id)).toBe(true);
+    expect(calls.some(([, method]) => method === "createThread")).toBe(true);
+
+    const workspace = path.join(dir, "users", original.user.id, "workspace");
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(path.join(workspace, "model.html"), "<p>existing model</p>");
+    const model = await app.request("/api/files/raw?path=model.html");
+    expect(model.status).toBe(200);
+    expect(await model.text()).toContain("existing model");
+    expect((await app.request("/api/files/raw?path=../identity.db")).status).toBe(404);
+    hub.register("local-run", localUser.id, "existing-thread");
+    hub.push(localUser.id, "local-run", { type: "done", finishReason: "stop" });
+    expect(await (await app.request("/api/runs/local-run/events")).text()).toContain('"type":"done"');
+  });
+
+  it("免登录仍拒绝跨源写入并禁用账号切换和注册", async () => {
+    const seeded = makeApp({ call: async () => [] as never });
+    const localUser = await seeded.auth.localUser();
+    const { app } = makeApp({ call: async () => [] as never }, { auth: seeded.auth, localUser });
+    expect((await app.request("/api/sessions", { method: "POST", headers: { origin: "http://evil.test", host: "localhost" } })).status).toBe(403);
+    for (const route of ["login", "register"]) {
+      expect((await app.request(`/api/auth/${route}`, { method: "POST" })).status).toBe(403);
+    }
+    await app.request("/api/auth/logout", { method: "POST" });
+    expect((await app.request("/api/sessions")).status).toBe(200);
+    expect(await seeded.auth.userCount()).toBe(1);
+  });
+
   it("注册上限、登录、未登录拒绝", async () => {
     const { app } = makeApp({ call: async () => [] as never });
     expect((await app.request("/api/sessions")).status).toBe(401);

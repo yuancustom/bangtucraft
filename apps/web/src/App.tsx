@@ -10,7 +10,7 @@ import "./style.css";
 
 type Page = { kind: "chat"; threadId?: string } | { kind: "models" } | { kind: "compare" };
 
-function Main({ user, onLogout }: { user: User; onLogout: () => void }) {
+function Main({ user, loginRequired, onLogout }: { user: User; loginRequired: boolean; onLogout: () => void }) {
   const [sessions, setSessions] = useState<ThreadSummary[]>([]);
   const [page, setPage] = useState<Page>({ kind: "chat" });
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -124,10 +124,10 @@ function Main({ user, onLogout }: { user: User; onLogout: () => void }) {
           ))}
         </div>
         <div className="me">
-          {user.username}
-          <button className="link" onClick={onLogout}>
+          {loginRequired ? user.username : "本地工作空间"}
+          {loginRequired && <button className="link" onClick={onLogout}>
             退出
-          </button>
+          </button>}
         </div>
       </aside>
       <main className="main">
@@ -150,18 +150,20 @@ function Main({ user, onLogout }: { user: User; onLogout: () => void }) {
 }
 
 export function App() {
-  const [state, setState] = useState<{ loading: boolean; user: User | null; canRegister: boolean }>({ loading: true, user: null, canRegister: false });
+  const [state, setState] = useState<{ loading: boolean; user: User | null; canRegister: boolean; loginRequired: boolean; error?: string }>({ loading: true, user: null, canRegister: false, loginRequired: false });
   useEffect(() => {
     api.authStatus().then(
-      (r) => setState({ loading: false, user: r.user, canRegister: r.canRegister }),
-      () => setState({ loading: false, user: null, canRegister: false }),
+      (r) => setState({ loading: false, user: r.user, canRegister: r.canRegister, loginRequired: r.loginRequired }),
+      () => setState({ loading: false, user: null, canRegister: false, loginRequired: false, error: "暂时无法连接服务，请刷新重试" }),
     );
   }, []);
   if (state.loading) return <div className="center muted">加载中…</div>;
+  if (state.error) return <div className="center"><p>{state.error}</p><button onClick={() => location.reload()}>刷新</button></div>;
   if (!state.user) return <Login canRegister={state.canRegister} onLogin={(user) => setState({ ...state, user })} />;
   return (
     <Main
       user={state.user}
+      loginRequired={state.loginRequired}
       onLogout={() => {
         void api.logout().finally(() => location.reload());
       }}

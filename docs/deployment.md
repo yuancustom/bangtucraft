@@ -22,6 +22,8 @@ docker compose ps
 
 新主机先填写 `.env` 和可选 `skills/local.json`。执行端需要 Node 24、uv、用户拥有的 Skills 和 CAD 工具；它们不从 GitHub 自动携带。搜索服务仍使用 `corepack pnpm searxng:up` 启动本机 SearXNG。
 
+默认 `AUTH_MODE=local`，打开网页直接进入本地工作空间，无需账号或 Cookie，内网访问者共享会话和文件。已有部署可在 `.env` 中设置 `LOCAL_USER_ID` 复用指定用户；未指定时选择最早创建的用户，空库自动创建。指定 ID 不存在时启动报错，避免意外进入空工作空间。更改配置后重启 Windows 执行端。需要各用户独立工作空间时可设置 `AUTH_MODE=accounts` 恢复登录。
+
 `deploy/Enable-Autostart.ps1` 可登记当前用户登录启动任务 `BangBangTuTu-Agent`，通过隐藏进程启动执行端。Docker Desktop 应开启登录启动。执行端日志和 PID 在 `data/windows-agent.*`。日志不提交。
 
 访问入口为 `http://<Windows宿主机IPv4>:18878`。本机可以访问不代表另一台设备的防火墙和网络策略也允许访问；部署时需分别检查监听地址、容器健康和宿主机内网接口。IP 由所在网络分配，换网后可能变化。

@@ -54,6 +54,7 @@ console.log(`[skills] 已加载 ${skills.skills.length} 个 Skill`);
 const mcp = readMcpConfig();
 const hub = new RunHub();
 const auth = new AuthStore(path.join(config.dataDir, "identity.db"));
+const localUser = config.env.AUTH_MODE === "local" ? await auth.localUser(config.env.LOCAL_USER_ID) : undefined;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pool = new WorkerPool({
   entry: path.join(here, "gateway", "worker-entry.ts"),
@@ -84,6 +85,7 @@ const pool = new WorkerPool({
 
 const app = createApp({
   auth,
+  localUser,
   workers: pool,
   hub,
   registry,

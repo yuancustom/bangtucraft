@@ -30,6 +30,8 @@ const envSchema = z.object({
   BANGTU_BUDGET_COINS: z.coerce.number().min(0).default(10),
   PORT: z.coerce.number().int().min(1).max(65535).default(8787),
   HOST: z.string().trim().min(1).default("127.0.0.1"),
+  AUTH_MODE: z.enum(["local", "accounts"]).default("local"),
+  LOCAL_USER_ID: optionalText,
   DATA_DIR: optionalText,
   HTTPS_PROXY: optionalUrl,
   NO_PROXY: optionalText,

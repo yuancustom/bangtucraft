@@ -34,6 +34,8 @@ export interface WorkerCaller {
 
 export interface GatewayDeps {
   auth: AuthStore;
+  /** 设定后所有访问都使用同一本地工作空间，无需登录 Cookie。 */
+  localUser?: User;
   workers: WorkerCaller;
   hub: RunHub;
   registry: ModelRegistry;
@@ -80,11 +82,12 @@ export function createApp(deps?: GatewayDeps) {
     setCookie(c, COOKIE, token, { httpOnly: true, sameSite: "Strict", path: "/", maxAge: 30 * 24 * 3600 });
 
   app.get("/api/auth/status", async (c) => {
-    const user = await auth.userForToken(getCookie(c, COOKIE));
+    const user = deps.localUser ?? await auth.userForToken(getCookie(c, COOKIE));
     const count = await auth.userCount();
-    return c.json({ user: user ?? null, canRegister: count < MAX_USERS, maxUsers: MAX_USERS });
+    return c.json({ user: user ?? null, loginRequired: !deps.localUser, canRegister: !deps.localUser && count < MAX_USERS, maxUsers: MAX_USERS });
   });
   app.post("/api/auth/register", async (c) => {
+    if (deps.localUser) return c.json({ error: "当前使用免登录工作空间" }, 403);
     try {
       const body = credentials.parse(await c.req.json());
       await auth.register(body.username, body.password);
@@ -96,6 +99,7 @@ export function createApp(deps?: GatewayDeps) {
     }
   });
   app.post("/api/auth/login", async (c) => {
+    if (deps.localUser) return c.json({ error: "当前使用免登录工作空间" }, 403);
     try {
       const body = credentials.parse(await c.req.json());
       const { user, token } = await auth.login(body.username, body.password);
@@ -106,6 +110,7 @@ export function createApp(deps?: GatewayDeps) {
     }
   });
   app.post("/api/auth/logout", async (c) => {
+    if (deps.localUser) return c.json({ ok: true });
     await auth.logout(getCookie(c, COOKIE));
     deleteCookie(c, COOKIE, { path: "/" });
     return c.json({ ok: true });
@@ -113,7 +118,7 @@ export function createApp(deps?: GatewayDeps) {
 
   app.use("/api/*", async (c, next) => {
     if (c.req.path.startsWith("/api/auth/")) return next();
-    const user = await auth.userForToken(getCookie(c, COOKIE));
+    const user = deps.localUser ?? await auth.userForToken(getCookie(c, COOKIE));
     if (!user) return c.json({ error: "未登录" }, 401);
     // 防 CSRF：改动类请求必须来自同源页面（fetch 会带 Origin）。
     if (c.req.method !== "GET") {

@@ -48,6 +48,7 @@ describe("loadConfig", () => {
     const config = loadConfig({ rootDir: root, env: validEnv });
     expect(config.port).toBe(8787);
     expect(config.host).toBe("127.0.0.1");
+    expect(config.env.AUTH_MODE).toBe("local");
     expect(config.env.BANGTU_BUDGET_COINS).toBe(10);
     expect(config.dataDir).toBe(path.join(root, "data"));
     expect(config.secrets.FAKE_API_KEY).toBe(SECRET_C);
@@ -62,6 +63,11 @@ describe("loadConfig", () => {
     const config = loadConfig({ rootDir: root, env: { PORT: "9100" } });
     expect(config.env.OPENAI_BASE_URL).toBe("https://a.test/v1");
     expect(config.port).toBe(9100);
+  });
+
+  it("支持切回独立账号并校验认证模式", () => {
+    expect(loadConfig({ rootDir: root, env: { ...validEnv, AUTH_MODE: "accounts" } }).env.AUTH_MODE).toBe("accounts");
+    expect(captureError(() => loadConfig({ rootDir: root, env: { ...validEnv, AUTH_MODE: "invalid" } })).problems).toContain("AUTH_MODE: 取值非法");
   });
 
   it("缺少必填变量时报出全部变量名（包括模型接入点要求的密钥）", () => {
