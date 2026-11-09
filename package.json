@@ -1,0 +1,32 @@
+{
+  "name": "bangtucraft",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start:windows": "node scripts/start-windows.mjs",
+    "docker:up": "docker compose up -d --build",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "dev": "corepack pnpm -r --parallel --filter ./apps/* --filter ./packages/search-mcp dev",
+    "start": "corepack pnpm -C apps/web build && corepack pnpm -r --parallel --filter ./apps/server --filter ./packages/search-mcp start",
+    "searxng:up": "corepack pnpm -C packages/search-mcp searxng:up",
+    "searxng:down": "corepack pnpm -C packages/search-mcp searxng:down",
+    "sync-vendor-skills": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-vendor-skills.ps1",
+    "build": "corepack pnpm -r build",
+    "test": "vitest run",
+    "typecheck": "corepack pnpm -r typecheck",
+    "lint": "eslint apps packages scripts eslint.config.js vitest.config.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.39.0",
+    "globals": "^16.5.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.0"
+  }
+}

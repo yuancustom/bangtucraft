@@ -1,0 +1,23 @@
+{
+  "name": "@drawing-agent/search-mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "searxng:up": "docker compose up -d",
+    "searxng:down": "docker compose down",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@mastra/core": "1.69.0",
+    "@mastra/mcp": "2.1.0",
+    "dotenv": "^17.2.0",
+    "undici": "^7.30.2",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0"
+  }
+}

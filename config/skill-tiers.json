@@ -1,0 +1,25 @@
+{
+  "tiers": {
+    "dwg-to-dxf": "L1",
+    "gcmp-dwg-tools": "L1",
+    "dxf-frame-splitter": "L2",
+    "subdrawing-to-3d": "L3",
+    "floorplan-variants-to-ifc": "L3",
+    "room-equipment-layout": "L3",
+    "bangtu-dwg-classify-catalog-manage": "L1",
+    "bangtu-dwg-frame-screenshot": "L2",
+    "bangtu-dwg-drawing-search": "L2",
+    "bangtu-cad-to-pdf": "L2",
+    "bangtu-cad-html-viewer": "L2",
+    "bangtu-door-and-window-section": "L2",
+    "bangtu-dwg-info-content-diff": "L2",
+    "bangtu-smoke-control-calculation": "L2",
+    "bangtu-arch-2d-to-3d": "L3",
+    "bangtu-stru-2d-to-3d": "L3",
+    "bangtu-plum-2d-to-3d": "L3",
+    "bangtu-hvac-2d-to-3d": "L3",
+    "bangtu-elec-2d-to-3d": "L3",
+    "bangtu-engineering-design-description-review": "L3",
+    "bangtu-multidisciplinary-joint-review": "L3"
+  }
+}

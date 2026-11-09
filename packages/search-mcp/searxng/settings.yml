@@ -1,0 +1,18 @@
+use_default_settings: true
+
+server:
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+# 本机代理（Clash 等）。若不需要代理，删除 outgoing.proxies 段。
+outgoing:
+  request_timeout: 8.0
+  proxies:
+    all://:
+      - http://host.docker.internal:12000

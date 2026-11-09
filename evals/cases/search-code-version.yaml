@@ -1,0 +1,12 @@
+id: search-code-version
+title: 联网核实规范版本
+prompt: 联网查一下《建筑设计防火规范》GB 50016 目前执行的是哪个版本，以及它和 GB 55037 的关系，给出来源链接。
+rubric: |
+  1. 结论是否与可靠来源一致。
+  2. 是否给出可访问的来源链接，且没有把搜索摘要当作已读原文。
+  3. 表述是否简洁准确。
+assertions:
+  - type: tool_called
+    value: search_web
+  - type: contains
+    value: "http"

@@ -1,0 +1,7 @@
+{
+  "skills": [
+    { "path": "../my-skills/dwg-to-dxf" },
+    { "path": "../my-skills/gcmp-dwg-tools" },
+    { "path": "../my-skills/subdrawing-to-3d" }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "providers": [
+    {
+      "id": "codebuddy",
+      "baseUrl": "https://www.codebuddy.cn/v2",
+      "apiKeyEnv": "CODEBUDDY_API_KEY",
+      "streamOnly": true,
+      "useProxy": false
+    },
+    {
+      "id": "apikeyfun",
+      "baseUrlEnv": "OPENAI_BASE_URL",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "useProxy": true
+    }
+  ],
+  "models": [
+    {
+      "id": "deepseek-v4-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "provider": "codebuddy",
+      "tier": "L1",
+      "capabilities": { "tools": true, "images": false, "reasoning": true },
+      "contextTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "providerOptions": { "reasoningEffort": "high", "thinking": { "type": "enabled" } },
+      "pricePerMTokens": { "input": 1, "output": 2, "currency": "CNY" }
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "name": "GPT 6.1 Sol",
+      "provider": "apikeyfun",
+      "tier": "L2",
+      "capabilities": { "tools": true, "images": true, "reasoning": true },
+      "contextTokens": 400000,
+      "maxOutputTokens": 64000,
+      "pricePerMTokens": { "input": 10, "output": 40, "currency": "CNY" }
+    },
+    {
+      "id": "gpt-6-astra",
+      "name": "GPT 6 Astra",
+      "provider": "apikeyfun",
+      "tier": "L3",
+      "capabilities": { "tools": true, "images": true, "reasoning": true },
+      "contextTokens": 400000,
+      "maxOutputTokens": 64000,
+      "pricePerMTokens": { "input": 30, "output": 120, "currency": "CNY" }
+    }
+  ],
+  "roles": {
+    "L1": "deepseek-v4-flash",
+    "L2": "gpt-6.1-sol",
+    "L3": "gpt-6-astra",
+    "classifier": "deepseek-v4-flash",
+    "planner": "gpt-6-astra",
+    "summarizer": "deepseek-v4-flash",
+    "title": "deepseek-v4-flash",
+    "judge": "gpt-6-astra"
+  }
+}

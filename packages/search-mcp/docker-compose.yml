@@ -1,0 +1,12 @@
+name: drawing-agent-search
+services:
+  searxng:
+    image: searxng/searxng:latest
+    ports:
+      - "127.0.0.1:8888:8080"
+    environment:
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-change-me}
+      - SEARXNG_BASE_URL=http://127.0.0.1:8888/
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    restart: unless-stopped
