@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { HistoryMessage, ModelInfo, PermissionMode, SkillInfo } from "@drawing-agent/shared";
 import { api } from "../api.ts";
+import { attachmentText, useUploads } from "../use-uploads.ts";
 import { STATUS_LABEL, type Block, type RunView } from "../run-state.ts";
 import { trackRun, useRuns } from "../runs-store.ts";
 import { Blocks } from "./Blocks.tsx";
+import { Attachments } from "./Attachments.tsx";
 
 function historyBlocks(m: HistoryMessage): Block[] {
   return m.parts.map((p): Block => {
@@ -64,29 +66,37 @@ export function ChatView({
   skills: SkillInfo[];
   onActivity: () => void;
 }) {
-  const [history, setHistory] = useState<HistoryMessage[]>([]);
+  const [snapshot, setSnapshot] = useState<{ threadId: string; messages: HistoryMessage[]; completedRuns: string[] }>({ threadId, messages: [], completedRuns: [] });
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
   const [model, setModel] = useState(() => localStorage.getItem("model") ?? "auto");
   const [mode, setMode] = useState<PermissionMode>(() => (localStorage.getItem("mode") as PermissionMode) ?? "request");
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [images, setImages] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const uploads = useUploads(setError);
   const [sending, setSending] = useState(false);
   const allRuns = useRuns();
   const runs = useMemo(() => allRuns.filter((r) => r.threadId === threadId), [allRuns, threadId]);
   const active = runs.find((r) => !r.finished);
+  const question = active?.status === "waiting_input"
+    ? active.blocks.findLast((b): b is Extract<Block, { kind: "question" }> => b.kind === "question" && !b.resolved)
+    : undefined;
   const bottom = useRef<HTMLDivElement>(null);
-  const loadedAt = useRef(0);
+  const runsRef = useRef(runs);
+  runsRef.current = runs;
+  const history = snapshot.threadId === threadId ? snapshot.messages : [];
 
   useEffect(() => {
     setLoading(true);
     setError("");
-    loadedAt.current = Date.now();
+    let cancelled = false;
+    // 只隐藏此次请求之前已结束的轮次。请求期间结束的轮次继续展示完整实时面板。
+    const completedRuns = runsRef.current.filter((r) => r.threadId === threadId && r.finished).map((r) => r.runId);
     api
       .history(threadId)
-      .then((r) => setHistory(r.messages), (e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+      .then((r) => { if (!cancelled) setSnapshot({ threadId, messages: r.messages, completedRuns }); }, (e: Error) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [threadId]);
 
   useEffect(() => localStorage.setItem("model", model), [model]);
@@ -95,8 +105,8 @@ export function ChatView({
     bottom.current?.scrollIntoView({ behavior: "smooth" });
   }, [runs, history.length]);
 
-  // 历史里已经包含的轮次，不再重复显示实时面板；仍在运行的轮次从历史里剔除其后的消息。
-  const visibleRuns = runs.filter((r) => !r.finished || r.startedAt >= loadedAt.current);
+  // 刷新恢复的轮次即使开始于历史加载之前，结束后也保留回复和文件，直到下次加载历史。
+  const visibleRuns = runs.filter((r) => snapshot.threadId !== threadId || !snapshot.completedRuns.includes(r.runId));
   const cutoff = Math.min(...visibleRuns.map((r) => r.startedAt), Infinity);
   const visibleHistory = history.filter((m) => new Date(m.createdAt).getTime() < cutoff - 1000);
 
@@ -104,33 +114,25 @@ export function ChatView({
   const skillMatches = slash ? skills.filter((s) => s.name.includes(slash[1]!) || s.description.includes(slash[1]!)).slice(0, 12) : [];
 
   const send = async () => {
-    const body = text.trim();
-    if (!body || active || sending) return;
+    const body = attachmentText(text, uploads.files);
+    if (!body || (active && !question) || sending || uploads.isUploading()) return;
     setSending(true);
     setError("");
     try {
-      const { runId } = await api.send(threadId, { text: body, model, permissionMode: mode, skills: selectedSkills, images });
-      trackRun(runId, threadId, body);
+      if (active && question) {
+        await api.answer(active.runId, question.toolCallId, [], body);
+      } else {
+        const { runId } = await api.send(threadId, { text: body, model, permissionMode: mode, skills: selectedSkills, images: uploads.files.filter((f) => f.image).map((f) => f.path) });
+        trackRun(runId, threadId, body);
+      }
       setText("");
       setSelectedSkills([]);
-      setImages([]);
+      uploads.clear();
       onActivity();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setSending(false);
-    }
-  };
-
-  const upload = async (files: FileList | null) => {
-    for (const f of Array.from(files ?? [])) {
-      try {
-        const r = await api.upload(f);
-        if (f.type.startsWith("image/")) setImages((x) => [...x, r.path]);
-        else setText((t) => `${t}${t ? "\n" : ""}[附件] ${r.path}`);
-      } catch (e) {
-        setError((e as Error).message);
-      }
     }
   };
 
@@ -174,23 +176,21 @@ export function ChatView({
             ))}
           </div>
         )}
-        {(selectedSkills.length > 0 || images.length > 0) && (
+        {selectedSkills.length > 0 && (
           <div className="chips">
             {selectedSkills.map((s) => (
               <span key={s} className="chip">
                 /{s} <button onClick={() => setSelectedSkills((x) => x.filter((y) => y !== s))}>×</button>
               </span>
             ))}
-            {images.map((p) => (
-              <span key={p} className="chip">
-                🖼 {p.split("/").pop()} <button onClick={() => setImages((x) => x.filter((y) => y !== p))}>×</button>
-              </span>
-            ))}
           </div>
         )}
+        <Attachments files={uploads.files} remove={uploads.remove} />
+        {uploads.uploading && <div className="muted" role="status">上传中，请稍候…</div>}
+        {question && <div className="muted">可以在这里上传文件并点击“补充并继续”，或使用上方的问题卡片。</div>}
         <textarea
           value={text}
-          placeholder={active ? "本会话正在运行，可以先编辑下一条…" : "输入消息，Enter 发送，Shift+Enter 换行，/ 选择技能"}
+          placeholder={question ? "补充说明或上传文件，继续当前任务…" : active ? "本会话正在运行，可以先编辑下一条…" : "输入消息，Enter 发送，Shift+Enter 换行，/ 选择技能"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -215,19 +215,24 @@ export function ChatView({
           </select>
           <label className="upload">
             上传
-            <input type="file" multiple hidden onChange={(e) => void upload(e.target.files)} />
+            <input type="file" aria-label="上传附件" multiple hidden disabled={uploads.uploading || sending} onChange={(e) => {
+              const files = Array.from(e.currentTarget.files ?? []);
+              e.currentTarget.value = "";
+              void uploads.upload(files);
+            }} />
           </label>
           <span className="spacer" />
           {error && <span className="error-text">{error}</span>}
-          {active ? (
+          {active && !question ? (
             <button className="danger" onClick={() => void api.abort(active.runId)}>
               停止
             </button>
-          ) : (
-            <button className="primary" disabled={!text.trim() || sending} onClick={() => void send()}>
-              发送
+          ) : <>
+            {active && <button className="danger" onClick={() => void api.abort(active.runId)}>停止</button>}
+            <button className="primary" disabled={(!text.trim() && !uploads.files.length) || sending || uploads.uploading} onClick={() => void send()}>
+              {question ? "补充并继续" : "发送"}
             </button>
-          )}
+          </>}
         </div>
       </div>
     </div>

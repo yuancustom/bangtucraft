@@ -112,6 +112,21 @@ async function login(app: ReturnType<typeof createApp>, username: string, regist
 }
 
 describe("网关接口", () => {
+  it("免登录访客通过 multipart 上传中文文件并下载原始内容，无需宿主机路径", async () => {
+    const seeded=makeApp({call:async()=>[] as never});
+    const localUser=await seeded.auth.localUser();
+    const {app}=makeApp({call:async()=>[] as never},{auth:seeded.auth,localUser});
+    const form=new FormData();
+    form.append("file",new File(["楼层,数量\n一层,7"],"访客清单.csv",{type:"text/csv"}));
+    const upload=await app.request("/api/files/upload",{method:"POST",body:form});
+    expect(upload.status).toBe(200);
+    const result=await upload.json();
+    expect(result.path).toMatch(/^uploads\//);
+    const downloaded=await app.request(`/api/files/raw?path=${encodeURIComponent(result.path)}&download=1`);
+    expect(downloaded.status).toBe(200);
+    expect(await downloaded.text()).toBe("楼层,数量\n一层,7");
+    expect(downloaded.headers.get("content-disposition")).toContain("attachment");
+  });
   it("免登录访问复用原用户的会话、文件和 SSE，旧 Cookie 不切换工作空间", async () => {
     const calls: [string, string][] = [];
     const workers: WorkerCaller = { call: async (userId, method) => {

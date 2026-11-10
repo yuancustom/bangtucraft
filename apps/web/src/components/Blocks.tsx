@@ -3,8 +3,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { FileCard } from "@drawing-agent/shared";
 import { api, fileUrl } from "../api.ts";
+import { attachmentText, useUploads } from "../use-uploads.ts";
 import type { Block } from "../run-state.ts";
 import { FilePreview } from "./FilePreview.tsx";
+import { Attachments } from "./Attachments.tsx";
 
 const TOOL_LABEL: Record<string, string> = {
   local_command_execute: "执行命令",
@@ -155,13 +157,14 @@ function QuestionCard({ b, runId }: { b: Extract<Block, { kind: "question" }>; r
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(b.resolved);
   const [error, setError] = useState("");
+  const uploads = useUploads(setError);
   const toggle = (id: string) =>
     setSelected((s) => (b.allowMultiple ? (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]) : [id]));
   const submit = async () => {
-    if (!runId) return;
+    if (!runId || uploads.isUploading()) return;
     setBusy(true);
     try {
-      await api.answer(runId, b.toolCallId, selected, text);
+      await api.answer(runId, b.toolCallId, selected, attachmentText(text, uploads.files));
       setDone("已回答");
     } catch (e) {
       setError((e as Error).message);
@@ -183,11 +186,21 @@ function QuestionCard({ b, runId }: { b: Extract<Block, { kind: "question" }>; r
         </label>
       ))}
       {b.allowFreeText && !resolved && <textarea placeholder="补充说明（可选）" value={text} onChange={(e) => setText(e.target.value)} rows={2} />}
+      {!resolved && <>
+        <Attachments files={uploads.files} remove={uploads.remove} />
+        <label className="upload">{uploads.uploading ? "上传中…" : "上传补充文件"}
+          <input type="file" aria-label="上传补充文件" multiple hidden disabled={busy || uploads.uploading || !runId} onChange={(e) => {
+            const files = Array.from(e.currentTarget.files ?? []);
+            e.currentTarget.value = "";
+            void uploads.upload(files);
+          }} />
+        </label>
+      </>}
       {resolved ? (
         <div className="muted">{resolved}</div>
       ) : (
         <div className="row">
-          <button className="primary" disabled={busy || !runId || (!selected.length && !text.trim())} onClick={submit}>
+          <button className="primary" disabled={busy || uploads.uploading || !runId || (!selected.length && !text.trim() && !uploads.files.length)} onClick={submit}>
             提交
           </button>
         </div>

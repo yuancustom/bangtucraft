@@ -53,15 +53,22 @@ export async function previewHtml(abs: string): Promise<string> {
 
 export async function saveUpload(dataDir: string, userId: string, file: File): Promise<{ path: string; size: number }> {
   if (file.size > 100 * 1024 * 1024) throw new Error("文件超过 100MiB");
-  const safe = path.basename(file.name).replace(/[<>:"/\\|?*]/g, "_").replace(/\p{Cc}/gu, "_").slice(0, 180) || "upload.bin";
+  let safe = path.basename(file.name).replace(/[<>:"/\\|?*]/g, "_").replace(/\p{Cc}/gu, "_").slice(0, 180).replace(/[. ]+$/g, "") || "upload.bin";
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(safe)) safe = `_${safe}`;
   const root = workspaceOf(dataDir, userId);
-  const dir = path.join(root, "uploads");
+  const dir = await resolveWorkspacePath(root, "uploads");
   await fs.mkdir(dir, { recursive: true });
-  let target = path.join(dir, safe);
-  for (let i = 1; await fs.stat(target).then(() => true, () => false); i++) {
-    const ext = path.extname(safe);
-    target = path.join(dir, `${path.basename(safe, ext)}(${i})${ext}`);
+  const ext = path.extname(safe);
+  const data = Buffer.from(await file.arrayBuffer());
+  for (let i = 0; ; i++) {
+    const name = i ? `${path.basename(safe, ext)}(${i})${ext}` : safe;
+    const target = await resolveWorkspacePath(root, `uploads/${name}`);
+    try {
+      // 独占创建，避免多个内网用户同名上传时互相覆盖。
+      await fs.writeFile(target, data, { flag: "wx" });
+      return { path: path.relative(root, target).split(path.sep).join("/"), size: file.size };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
   }
-  await fs.writeFile(target, Buffer.from(await file.arrayBuffer()));
-  return { path: path.relative(root, target).split(path.sep).join("/"), size: file.size };
 }
