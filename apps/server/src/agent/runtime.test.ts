@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import { createTool } from "@mastra/core/tools";
+import { MCPServer } from "@mastra/mcp";
+import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RunEventBody } from "@drawing-agent/shared";
 import { modelsFileSchema } from "../models/schema.ts";
@@ -8,6 +13,7 @@ import { ModelRegistry } from "../models/registry.ts";
 import { Redactor } from "../redact.ts";
 import { FAKE_SECRET, fakeModelsFile, startFakeOpenAI, type FakeReply } from "../test-utils/fake-openai.ts";
 import { UserRuntime } from "./runtime.ts";
+import type { McpConfig } from "./mcp.ts";
 
 type Body = Record<string, unknown>;
 const systemText = (body: Body) =>
@@ -28,7 +34,7 @@ afterEach(async () => {
   while (cleanups.length) await cleanups.pop()!();
 });
 
-async function setup(executor: (body: Body) => FakeReply, opts: { classify?: string; plan?: string; title?: () => FakeReply | Promise<FakeReply> } = {}) {
+async function setup(executor: (body: Body) => FakeReply, opts: { classify?: string; plan?: string; title?: () => FakeReply | Promise<FakeReply>; mcp?: McpConfig } = {}) {
   const fake = await startFakeOpenAI((body) => {
     const sys = systemText(body);
     if (sys.includes("任务难度分类器")) return { text: `{"tier":"${opts.classify ?? "simple"}"}` };
@@ -48,7 +54,7 @@ async function setup(executor: (body: Body) => FakeReply, opts: { classify?: str
     redactor: new Redactor([FAKE_SECRET]),
     secrets: { FAKE_API_KEY: FAKE_SECRET },
     skills: { skills: [], problems: [], tiers: {} },
-    mcp: { servers: {} },
+    mcp: opts.mcp ?? { servers: {} },
     python: { uvExe: "uv", root: path.join(dir, "python"), indexUrl: "https://pypi.invalid/simple" },
     extraEnv: {},
     emit: (_runId, body) => {
@@ -83,6 +89,35 @@ async function setup(executor: (body: Body) => FakeReply, opts: { classify?: str
 const done = (e: RunEventBody) => e.type === "done";
 
 describe("UserRuntime（假模型）", () => {
+  it("本地自动模式无需批准即可执行命令并完成任务", async () => {
+    const {runtime,events,waitFor}=await setup(body=>hasToolResult(body)?{text:"完成"}:{toolCalls:[{name:"local_command_execute",args:{command:"Write-Output auto-local"}}]});
+    const thread=await runtime.createThread();
+    await runtime.startRun(thread.id,{text:"运行",model:"fake-l2",permissionMode:"full-access"});
+    await waitFor(done);
+    expect(events.some(e=>e.type==="approval")).toBe(false);
+    expect(events.filter(e=>e.type==="tool-result")).toEqual(expect.arrayContaining([expect.objectContaining({result:expect.objectContaining({stdout:expect.stringContaining("auto-local")})})]));
+  });
+
+  it.each([false,true])("自动模式下付费调用仍挂起，批准=%s 才执行（本地假MCP，不花钱）", async (approved) => {
+    let charged=0;
+    const server=new MCPServer({id:"paid-test",name:"paid-test",version:"1.0.0",tools:{
+      bangtu_capture_screenshot_in_frame:createTool({id:"bangtu_capture_screenshot_in_frame",description:"本地假截图",inputSchema:z.object({frameId:z.string()}),execute:async()=>{charged++;return {success:true};}}),
+    }});
+    const httpServer=http.createServer(async(req,res)=>{await server.startHTTP({url:new URL(req.url??"/",`http://${req.headers.host}`),httpPath:"/mcp",req,res});});
+    await new Promise<void>(r=>httpServer.listen(0,"127.0.0.1",r));
+    cleanups.push(async()=>{httpServer.closeAllConnections();await new Promise<void>(r=>httpServer.close(()=>r()));await server.close();});
+    const url=`http://127.0.0.1:${(httpServer.address() as AddressInfo).port}/mcp`;
+    const {runtime,events,waitFor}=await setup(body=>hasToolResult(body)?{text:"处理结束"}:{toolCalls:[{name:"bangtu_capture_screenshot_in_frame",args:{frameId:"f1"}}]},{mcp:{servers:{test:{url}}}});
+    const thread=await runtime.createThread();
+    const runId=await runtime.startRun(thread.id,{text:"截图",model:"fake-l2",permissionMode:"full-access"});
+    await waitFor(e=>e.type==="status"&&e.status==="waiting_approval");
+    const approval=events.find(e=>e.type==="approval") as Extract<RunEventBody,{type:"approval"}>;
+    expect(charged).toBe(0);
+    expect(approval.reason).toContain("0.01 币");
+    await runtime.respondApproval(runId,approval.toolCallId,approved);
+    await waitFor(done);
+    expect(charged).toBe(approved?1:0);
+  }, 30000);
   it("首轮成功问答概括命名，done前可读取，后续问答不重复命名", async () => {
     let names = 0;
     const { runtime, events, fake, waitFor } = await setup(() => ({ text: "可以先按平面轴网与剖面标高识读厂房。" }), { title: () => { names++; return { text: "“厂房图纸识读”" }; } });

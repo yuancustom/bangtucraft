@@ -1,4 +1,5 @@
 // 测试用假 Worker：遵循 gateway/protocol.ts 的 IPC 协议。
+import { getHeapStatistics } from "node:v8";
 let userId = "";
 process.on("message", (m) => {
   if (m.type === "init") {
@@ -9,6 +10,8 @@ process.on("message", (m) => {
   if (m.type !== "request") return;
   const reply = (result) => process.send({ type: "response", id: m.id, ok: true, result });
   switch (m.method) {
+    case "activeRuns":
+      return reply({ execArgv: process.execArgv, heapLimit: getHeapStatistics().heap_size_limit });
     case "listThreads":
       return reply([{ id: `t-${userId}`, title: userId, createdAt: "", updatedAt: "" }]);
     case "startRun": {

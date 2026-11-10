@@ -32,6 +32,7 @@ const envSchema = z.object({
   HOST: z.string().trim().min(1).default("127.0.0.1"),
   AUTH_MODE: z.enum(["local", "accounts"]).default("local"),
   LOCAL_USER_ID: optionalText,
+  AGENT_HEAP_MB: z.coerce.number().int().min(1024).max(16384).default(8192),
   DATA_DIR: optionalText,
   HTTPS_PROXY: optionalUrl,
   NO_PROXY: optionalText,

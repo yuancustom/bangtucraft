@@ -58,6 +58,7 @@ const localUser = config.env.AUTH_MODE === "local" ? await auth.localUser(config
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pool = new WorkerPool({
   entry: path.join(here, "gateway", "worker-entry.ts"),
+  maxHeapMb: config.env.AGENT_HEAP_MB,
   init: (userId) => ({
     type: "init",
     userId,

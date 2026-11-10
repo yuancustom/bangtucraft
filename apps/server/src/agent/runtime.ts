@@ -36,6 +36,7 @@ import { createLocalFileTools } from "./tools/local-files.ts";
 import { PythonManager, createPythonTools } from "./tools/python.ts";
 import { createUserWorkspace } from "./workspace.ts";
 import { resolveWorkspacePath, mediaTypeOf } from "./paths.ts";
+import { paidApprovalReason, requiresApproval } from "./approval-policy.ts";
 
 export const DELIVERY_CHECK_PREFIX = "[系统检查]";
 
@@ -85,6 +86,8 @@ interface RunState {
 const TERMINAL: RunStatus[] = ["completed", "failed", "cancelled"];
 
 function approvalReason(toolName: string): string {
+  const paid = paidApprovalReason(toolName);
+  if (paid) return paid;
   if (toolName === "local_command_execute") return "执行本地命令";
   if (toolName === "python_install_packages") return "联网安装 Python 依赖";
   if (toolName.startsWith("local_")) return "读取工作空间外的文件";
@@ -484,11 +487,7 @@ export class UserRuntime {
           if (name && this.options.skills.skills.some((s) => s.name === name)) state.skillActive = true;
           return false;
         }
-        if (state.mode === "full-access") return false;
-        if (toolName === "python_install_packages") return true;
-        if (toolName === "local_file_stat" || toolName === "local_directory_list" || toolName === "local_file_read") return true;
-        if (toolName === "local_command_execute") return !state.skillActive;
-        return false;
+        return requiresApproval(toolName, state.mode, state.skillActive);
       },
       prepareStep: () => {
         const esc = state.tracker.takeEscalation();

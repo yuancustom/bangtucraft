@@ -6,6 +6,8 @@ export interface HealthResponse {
 
 export type Tier = "L1" | "L2" | "L3";
 export type PermissionMode = "request" | "full-access";
+/** 本地操作默认自动执行；付费 MCP 调用独立于此模式逐次确认。 */
+export const DEFAULT_PERMISSION_MODE: PermissionMode = "full-access";
 
 export interface ModelInfo {
   id: string;

@@ -9,6 +9,7 @@
   "scripts": {
     "start:windows": "node scripts/start-windows.mjs",
     "docker:up": "docker compose up -d --build",
+    "docker:update": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/Update-Web.ps1",
     "check:secrets": "node scripts/check-secrets.mjs",
     "dev": "corepack pnpm -r --parallel --filter ./apps/* --filter ./packages/search-mcp dev",
     "start": "corepack pnpm -C apps/web build && corepack pnpm -r --parallel --filter ./apps/server --filter ./packages/search-mcp start",

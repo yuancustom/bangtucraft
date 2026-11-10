@@ -91,6 +91,17 @@ function findButton(node:unknown,label:string):TestElement|undefined {
   return findButton(el.props.children,label);
 }
 
+it("旧浏览器逐次批准设置迁移为本地自动执行；新手动设置可保留", () => {
+  fixture.files=[{path:"uploads/test.txt",name:"test.txt",image:false}];
+  vi.stubGlobal("localStorage", {getItem:(key:string)=>key==="mode"?"request":null,setItem:vi.fn()});
+  (findButton(render(),"发送")!.props.onClick as ()=>void)();
+  expect(fixture.send.mock.calls[0]![1]).toMatchObject({permissionMode:"full-access"});
+  fixture.cells=[];
+  vi.stubGlobal("localStorage", {getItem:(key:string)=>key==="permission-mode-v2"?"request":null,setItem:vi.fn()});
+  (findButton(render(),"发送")!.props.onClick as ()=>void)();
+  expect(fixture.send.mock.calls[1]![1]).toMatchObject({permissionMode:"request"});
+});
+
 it("等待补充材料时，正文输入框中的附件发送给原问题并继续同一轮",async()=>{
   fixture.files=[{path:"uploads/补充.pdf",name:"补充.pdf",image:false}];
   fixture.runs=[{runId:"waiting-run",threadId:"test-thread",status:"waiting_input",finished:false,models:[],blocks:[{kind:"question",toolCallId:"q1",question:"上传PDF",allowFreeText:true,allowMultiple:false}],prompt:"请识图",startedAt:Date.now()}];

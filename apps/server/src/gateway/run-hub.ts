@@ -7,6 +7,7 @@ interface RunEntry {
   events: RunEvent[];
   listeners: Set<(e: RunEvent) => void>;
   finished: boolean;
+  sequence: number;
   /** 收到 startRun 响应之前到达的事件也要保留。 */
   createdAt: number;
 }
@@ -20,7 +21,7 @@ export class RunHub {
 
   register(runId: string, userId: string, threadId: string) {
     if (this.runs.has(runId)) throw new Error("runId 重复");
-    this.runs.set(runId, { runId, userId, threadId, events: [], listeners: new Set(), finished: false, createdAt: Date.now() });
+    this.runs.set(runId, { runId, userId, threadId, events: [], listeners: new Set(), finished: false, sequence: 0, createdAt: Date.now() });
   }
 
   get(runId: string) {
@@ -31,7 +32,8 @@ export class RunHub {
   push(userId: string, runId: string, body: RunEventBody): boolean {
     const run = this.runs.get(runId);
     if (!run || run.userId !== userId || run.finished) return false;
-    const event: RunEvent = { ...body, runId, seq: run.events.length + 1, at: Date.now() } as RunEvent;
+    // 缓存达到上限后也继续递增，避免长任务在重连时因重复 seq 丢失完成事件。
+    const event: RunEvent = { ...body, runId, seq: ++run.sequence, at: Date.now() } as RunEvent;
     if (run.events.length < MAX_EVENTS || body.type !== "text") run.events.push(event);
     for (const l of run.listeners) l(event);
     if (body.type === "done") {

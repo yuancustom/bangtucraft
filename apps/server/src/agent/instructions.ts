@@ -12,6 +12,7 @@ export function buildInstructions(options: { workspaceRoot: string; mcpNote: str
 MCP 工具（通用规则）：
 - 按当前实际工具目录里的原始名称精确调用，不构造别名、不猜测接口。服务间工具重名会被停用，应如实说明。
 - 外部服务返回失败时如实说明原因；可重试的错误可以建议重试。
+- 帮图专业识别、图元下载和截图会扣币，必须通过已连接的 MCP 工具触发逐次付费确认。未经用户明确同意不得调用，不得通过本地命令、HTTP 请求或 Skill 脚本绕过付费确认。本地自动执行不代表付费授权。
 
 Skills 使用（通用规则）：
 - 根据用户当前任务和可用 Skills 的名称、描述，按需选择最匹配的 Skill，用 skill 工具读取说明后按流程执行；需要参考资料时用 skill_read / skill_search。

@@ -18,7 +18,7 @@ function CreateForm({ models, onCreated }: { models: ModelInfo[]; onCreated: (id
     { label: "自动路由", model: "auto" },
     ...models.slice(0, 2).map((m) => ({ label: m.name, model: m.id })),
   ]);
-  const [mode, setMode] = useState<"request" | "full-access">("request");
+  const [mode, setMode] = useState<"request" | "full-access">("full-access");
   const [original, setOriginal] = useState<{ available: boolean; threads: { id: string; title: string; messageCount: number }[] }>({
     available: false,
     threads: [],
@@ -127,7 +127,7 @@ function CreateForm({ models, onCreated }: { models: ModelInfo[]; onCreated: (id
         <label>权限模式</label>
         <select value={mode} onChange={(e) => setMode(e.target.value as "request" | "full-access")}>
           <option value="request">请求批准（命令需要在各列里逐个批准）</option>
-          <option value="full-access">完全访问（命令直接执行）</option>
+          <option value="full-access">本地自动执行（付费仍确认）</option>
         </select>
       </div>
       <div className="row">

@@ -31,6 +31,13 @@ afterEach(async () => {
 });
 
 describe("WorkerPool", () => {
+  it("把长任务堆内存配置实际传给子进程，并替换已有的旧上限",async()=>{
+    const pool=new WorkerPool({entry:path.join(here,"..","test-utils","fake-worker.mjs"),execArgv:["--max-old-space-size=1024"],maxHeapMb:8192,init:userId=>({type:"init",userId}) as never,onEvent:()=>undefined,onExit:()=>undefined});
+    closers.push(()=>pool.close());
+    const info=await pool.call<{execArgv:string[];heapLimit:number}>("alice","activeRuns");
+    expect(info.execArgv.filter(a=>a.startsWith("--max-old-space-size="))).toEqual(["--max-old-space-size=8192"]);
+    expect(info.heapLimit).toBeGreaterThan(8*1024**3);
+  });
   it("每用户独立进程，事件按用户分发，崩溃后通知并在下次调用时重启", async () => {
     const events: [string, string, RunEventBody][] = [];
     const exits: string[] = [];
@@ -62,6 +69,15 @@ describe("WorkerPool", () => {
 });
 
 describe("RunHub", () => {
+  it("长任务超过文本缓存上限后seq仍递增，重连能收到后续状态和完成事件", () => {
+    const hub=new RunHub();hub.register("long","u","t");
+    for(let i=0;i<20010;i++)hub.push("u","long",{type:"text",delta:"x"});
+    hub.push("u","long",{type:"status",status:"completed"});
+    hub.push("u","long",{type:"done",finishReason:"stop"});
+    const seen: number[]=[];
+    hub.subscribe("long",20010,e=>seen.push(e.seq));
+    expect(seen).toEqual([20011,20012]);
+  });
   it("按 runId 缓存、续传、拒绝他人事件、Worker 崩溃时补发失败", () => {
     const hub = new RunHub();
     hub.register("r1", "u1", "t1");
@@ -112,6 +128,23 @@ async function login(app: ReturnType<typeof createApp>, username: string, regist
 }
 
 describe("网关接口", () => {
+  it("省略权限模式默认本地自动执行，状态查询按用户隔离并支持已持久化成果", async () => {
+    const calls: unknown[][]=[];
+    const {app,hub}=makeApp({call:async (userId,method,...params)=>{
+      calls.push([userId,method,...params]);
+      if (method==="trace" && params[0]==="saved") return {runId:"saved",status:"completed",finalText:"已完成",files:[]} as never;
+      return null as never;
+    }});
+    const a=await login(app,"alice"), b=await login(app,"bob");
+    const res=await app.request("/api/sessions/t1/messages",{method:"POST",headers:{cookie:a.cookie,"Content-Type":"application/json"},body:JSON.stringify({text:"运行"})});
+    const {runId}=await res.json();
+    expect(calls.find(c=>c[1]==="startRun")![3]).toMatchObject({permissionMode:"full-access"});
+    expect((await app.request(`/api/runs/${runId}`,{headers:{cookie:a.cookie}})).status).toBe(200);
+    expect((await app.request(`/api/runs/${runId}`,{headers:{cookie:b.cookie}})).status).toBe(404);
+    hub.remove(runId);
+    expect(await(await app.request("/api/runs/saved",{headers:{cookie:a.cookie}})).json()).toMatchObject({trace:{status:"completed"}});
+    expect(calls.at(-1)![0]).toBe(a.user.id);
+  });
   it("免登录访客通过 multipart 上传中文文件并下载原始内容，无需宿主机路径", async () => {
     const seeded=makeApp({call:async()=>[] as never});
     const localUser=await seeded.auth.localUser();

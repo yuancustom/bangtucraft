@@ -6,6 +6,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { HealthResponse, RunEvent, RunTrace, SkillInfo, ThreadSummary } from "@drawing-agent/shared";
+import { DEFAULT_PERMISSION_MODE } from "@drawing-agent/shared";
 import type { SkillCatalog } from "./agent/skills.ts";
 import { AuthError, MAX_USERS, type AuthStore, type User } from "./gateway/auth.ts";
 import {
@@ -55,7 +56,7 @@ const COOKIE = "sid";
 const sendSchema = z.object({
   text: z.string().min(1).max(100_000),
   model: z.string().min(1).default("auto"),
-  permissionMode: z.enum(["request", "full-access"]).default("request"),
+  permissionMode: z.enum(["request", "full-access"]).default(DEFAULT_PERMISSION_MODE),
   skills: z.array(z.string().max(64)).max(10).optional(),
   images: z.array(z.string().max(4096)).max(8).optional(),
 });
@@ -233,6 +234,18 @@ export function createApp(deps?: GatewayDeps) {
   };
 
   app.get("/api/runs/active", (c) => c.json({ runs: hub.active(uid(c)) }));
+  // 断线后用普通请求区分网页入口暂不可用、运行存在、以及事件缓存已过期。
+  app.get("/api/runs/:runId", async (c) => {
+    const run = ownRun(c);
+    if (run) return c.json({ exists: true });
+    try {
+      const trace = await workers.call<RunTrace | null>(uid(c), "trace", c.req.param("runId"));
+      if (trace && ["completed", "failed", "cancelled"].includes(trace.status)) return c.json({ trace });
+    } catch {
+      return c.json({ error: "执行端暂不可用，等待重连" }, 503);
+    }
+    return c.json({ error: "运行不存在或已过期" }, 404);
+  });
   app.get("/api/runs/:runId/events", (c) => {
     const run = ownRun(c);
     if (!run) return c.json({ error: "运行不存在或已过期" }, 404);
@@ -349,7 +362,7 @@ export function createApp(deps?: GatewayDeps) {
   const compareSchema = z.object({
     prompt: z.string().min(1).max(100_000).optional(),
     caseId: z.string().optional(),
-    permissionMode: z.enum(["request", "full-access"]).default("request"),
+    permissionMode: z.enum(["request", "full-access"]).default(DEFAULT_PERMISSION_MODE),
     replicas: z.array(z.object({ label: z.string().min(1).max(40), model: z.string().min(1) })).max(6).default([]),
     original: z.object({ threadId: z.string().min(1), turnIndex: z.number().int().min(0) }).optional(),
   });

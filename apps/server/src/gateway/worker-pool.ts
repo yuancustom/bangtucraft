@@ -12,6 +12,7 @@ interface Handle {
 export interface WorkerPoolOptions {
   entry: string;
   execArgv?: string[];
+  maxHeapMb?: number;
   init: (userId: string) => WorkerInit;
   onEvent: (userId: string, runId: string, body: RunEventBody) => void;
   /** Worker 意外退出（不含主动关闭）。 */
@@ -29,8 +30,13 @@ export class WorkerPool {
   constructor(private readonly options: WorkerPoolOptions) {}
 
   private start(userId: string): Handle {
+    let execArgv = this.options.execArgv ?? process.execArgv;
+    if (this.options.maxHeapMb !== undefined) {
+      if (!Number.isInteger(this.options.maxHeapMb) || this.options.maxHeapMb < 1024 || this.options.maxHeapMb > 16384) throw new Error("Agent 内存上限须为 1024～16384 MiB");
+      execArgv = [...execArgv.filter(arg => !/^--max[-_]old[-_]space[-_]size=/.test(arg)), `--max-old-space-size=${this.options.maxHeapMb}`];
+    }
     const child = fork(this.options.entry, [], {
-      execArgv: this.options.execArgv ?? process.execArgv,
+      execArgv,
       stdio: ["ignore", "inherit", "inherit", "ipc"],
       serialization: "advanced",
     });

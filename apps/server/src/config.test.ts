@@ -49,6 +49,7 @@ describe("loadConfig", () => {
     expect(config.port).toBe(8787);
     expect(config.host).toBe("127.0.0.1");
     expect(config.env.AUTH_MODE).toBe("local");
+    expect(config.env.AGENT_HEAP_MB).toBe(8192);
     expect(config.env.BANGTU_BUDGET_COINS).toBe(10);
     expect(config.dataDir).toBe(path.join(root, "data"));
     expect(config.secrets.FAKE_API_KEY).toBe(SECRET_C);
@@ -68,6 +69,13 @@ describe("loadConfig", () => {
   it("支持切回独立账号并校验认证模式", () => {
     expect(loadConfig({ rootDir: root, env: { ...validEnv, AUTH_MODE: "accounts" } }).env.AUTH_MODE).toBe("accounts");
     expect(captureError(() => loadConfig({ rootDir: root, env: { ...validEnv, AUTH_MODE: "invalid" } })).problems).toContain("AUTH_MODE: 取值非法");
+  });
+
+  it("可配置Agent堆内存并拒绝过低、过高和非整数值", () => {
+    expect(loadConfig({rootDir:root,env:{...validEnv,AGENT_HEAP_MB:"4096"}}).env.AGENT_HEAP_MB).toBe(4096);
+    for(const value of ["512","20000","2048.5"]){
+      expect(captureError(()=>loadConfig({rootDir:root,env:{...validEnv,AGENT_HEAP_MB:value}})).problems).toContain("AGENT_HEAP_MB: 取值非法");
+    }
   });
 
   it("缺少必填变量时报出全部变量名（包括模型接入点要求的密钥）", () => {

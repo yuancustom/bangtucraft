@@ -29,6 +29,7 @@ export interface RunView {
   blocks: Block[];
   usage?: { inputTokens: number; outputTokens: number; costEstimate: number; currency: string };
   finished: boolean;
+  reconnecting?: boolean;
 }
 
 export function newRun(runId: string, threadId: string, prompt: string): RunView {

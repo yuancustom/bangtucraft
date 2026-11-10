@@ -33,7 +33,29 @@ export function trackRun(runId: string, threadId: string, prompt: string) {
       },
       () => {
         const current = runs.get(runId);
-        if (current && !current.finished) runs.set(runId, { ...current, finished: true, status: "failed" });
+        if (current && !current.finished) runs.set(runId, { ...current, finished: true, reconnecting: false, status: "failed", blocks: [...current.blocks, { kind: "note", tone: "error", text: "执行端已找不到此任务，请查看会话历史。" }] });
+        stops.delete(runId);
+        notify();
+      },
+      (reconnecting) => {
+        const current = runs.get(runId);
+        if (current && current.reconnecting !== reconnecting) {
+          runs.set(runId, { ...current, reconnecting });
+          notify();
+        }
+      },
+      (trace) => {
+        const current = runs.get(runId);
+        if (!current) return;
+        // 长时间断线后事件缓存可能已清理，使用本用户的持久化结果恢复，避免重复文字。
+        runs.set(runId, { ...current, status: trace.status, finished: true, reconnecting: false,
+          blocks: [
+            ...(trace.finalText ? [{ kind: "text" as const, text: trace.finalText }] : []),
+            ...(trace.files.length ? [{ kind: "files" as const, files: trace.files }] : []),
+            ...(trace.error ? [{ kind: "note" as const, tone: "error" as const, text: trace.error }] : []),
+          ],
+        });
+        stops.delete(runId);
         notify();
       },
     ),

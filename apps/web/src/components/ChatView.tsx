@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { HistoryMessage, ModelInfo, PermissionMode, SkillInfo } from "@drawing-agent/shared";
+import { DEFAULT_PERMISSION_MODE } from "@drawing-agent/shared";
 import { api } from "../api.ts";
 import { attachmentText, useUploads } from "../use-uploads.ts";
 import { STATUS_LABEL, type Block, type RunView } from "../run-state.ts";
@@ -38,6 +39,7 @@ function RunPanel({ run }: { run: RunView }) {
           </span>
         ))}
         <span className={`status status-${run.status}`}>{STATUS_LABEL[run.status]}</span>
+        {run.reconnecting && !run.finished && <span className="muted" role="status">连接中断，正在自动重连；后台任务继续运行</span>}
         {!run.finished && (
           <button className="link danger" onClick={() => void api.abort(run.runId)}>
             停止
@@ -70,7 +72,7 @@ export function ChatView({
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
   const [model, setModel] = useState(() => localStorage.getItem("model") ?? "auto");
-  const [mode, setMode] = useState<PermissionMode>(() => (localStorage.getItem("mode") as PermissionMode) ?? "request");
+  const [mode, setMode] = useState<PermissionMode>(() => localStorage.getItem("permission-mode-v2") === "request" ? "request" : DEFAULT_PERMISSION_MODE);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [error, setError] = useState("");
   const uploads = useUploads(setError);
@@ -100,7 +102,7 @@ export function ChatView({
   }, [threadId]);
 
   useEffect(() => localStorage.setItem("model", model), [model]);
-  useEffect(() => localStorage.setItem("mode", mode), [mode]);
+  useEffect(() => localStorage.setItem("permission-mode-v2", mode), [mode]);
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
   }, [runs, history.length]);
@@ -210,8 +212,8 @@ export function ChatView({
             ))}
           </select>
           <select value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)} title="权限模式">
-            <option value="request">请求批准</option>
-            <option value="full-access">完全访问</option>
+            <option value="full-access">本地自动执行（付费仍确认）</option>
+            <option value="request">本地操作请求批准</option>
           </select>
           <label className="upload">
             上传

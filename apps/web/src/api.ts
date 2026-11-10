@@ -109,11 +109,25 @@ export interface CompareView {
 }
 
 /** 订阅一轮运行的事件；断线后按 seq 续传。返回取消函数。 */
-export function subscribeRun(runId: string, onEvent: (e: RunEvent) => void, onGone?: () => void): () => void {
+export function subscribeRun(
+  runId: string,
+  onEvent: (e: RunEvent) => void,
+  onGone?: () => void,
+  onConnectionChange?: (reconnecting: boolean) => void,
+  onRecovered?: (trace: RunTrace) => void,
+): () => void {
   let lastSeq = 0;
   let closed = false;
   let source: EventSource | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  let probe: AbortController | undefined;
+  let failures = 0;
+  const close = () => {
+    closed = true;
+    source?.close();
+    probe?.abort();
+    if (retry) clearTimeout(retry);
+  };
   const open = () => {
     if (closed) return;
     source = new EventSource(`/api/runs/${runId}/events?after=${lastSeq}`);
@@ -123,30 +137,50 @@ export function subscribeRun(runId: string, onEvent: (e: RunEvent) => void, onGo
       lastSeq = e.seq;
       onEvent(e);
       if (e.type === "done") {
-        closed = true;
-        source?.close();
+        close();
+        onConnectionChange?.(false);
       }
     });
     source.onopen = () => {
       failures = 0;
+      onConnectionChange?.(false);
     };
-    source.onerror = () => {
+    source.onerror = async () => {
       source?.close();
       if (closed) return;
-      // 运行过期（404）时 EventSource 也走 onerror；连续失败多次就放弃。
-      if (++failures >= 5) {
-        closed = true;
-        onGone?.();
-        return;
+      onConnectionChange?.(true);
+      failures++;
+      probe = new AbortController();
+      const timeout = setTimeout(() => probe?.abort(), 8000);
+      try {
+        const res = await fetch(`/api/runs/${runId}`, { credentials: "same-origin", signal: probe.signal });
+        if (closed) return;
+        if (res.status === 404) {
+          const body = await res.json().catch(() => null) as { error?: string } | null;
+          if (closed) return;
+          // 旧版本网关或代理默认404不能证明后台任务已消失。
+          if (body?.error === "运行不存在或已过期") {
+            close();
+            onGone?.();
+            return;
+          }
+        }
+        if (res.ok) {
+          const data = await res.json() as { trace?: RunTrace };
+          if (closed) return;
+          if (data.trace && onRecovered) {
+            close();
+            onRecovered(data.trace);
+            return;
+          }
+        }
+      } catch { /* 网关重启或网络暂不可用：持续重连，不把任务判为失败。 */ }
+      finally { clearTimeout(timeout); }
+      if (!closed) {
+        retry = setTimeout(open, Math.min(1000 * 2 ** Math.min(failures, 4), 10_000));
       }
-      retry = setTimeout(open, 1500);
     };
   };
-  let failures = 0;
   open();
-  return () => {
-    closed = true;
-    if (retry) clearTimeout(retry);
-    source?.close();
-  };
+  return close;
 }

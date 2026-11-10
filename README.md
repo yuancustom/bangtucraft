@@ -14,6 +14,7 @@
 - 正式运行：`corepack pnpm start`，浏览器打开 http://127.0.0.1:8787 。会先构建前端，再启动服务和搜索 MCP。
 - 开发模式：`corepack pnpm dev`，浏览器打开 http://127.0.0.1:5173 。
 - 默认打开即用，无需注册或输入账号；内网访问者共享会话与文件。`.env` 的 `LOCAL_USER_ID` 可指定已有用户，保留其历史和模型；`AUTH_MODE=accounts` 可恢复独立账号模式。
+- 本地任务默认自动执行；帮图专业识别、图元下载、截图仍逐次确认费用。可在输入框切回“本地操作请求批准”。
 - 点击“上传”添加附件，编辑正文不会丢失附件，也可仅发送附件；每个文件最多 100MiB，每次最多 20 个附件（其中图片最多 8 张）。上传完成后才能发送。同名上传自动另存，不覆盖已有文件。Agent 等待补充材料时，可在问题卡片上传并提交，或在主输入框上传后点击“补充并继续”。
 
 ## 本地 Docker 混合部署（Windows）
@@ -28,6 +29,8 @@
 执行端监听 8787，Docker 通过 `host.docker.internal` 访问它。反向代理保留 Host/Origin，关闭 SSE 缓冲；请求体上限 200MB，应用单文件上限 100MiB。可用进程环境变量 `BANGTUTU_PORT` 改 Docker 入口端口。`docker compose ps` 查看健康状态；`docker compose down` 只停止网页容器，不删除 Windows 数据。
 
 Windows 执行端启动命令只在子进程内设置监听地址，不改写 `.env`。本机部署信息见 `docs/deployment.md`。容器无法直接运行 Windows `.exe`，这是采用混合部署的原因。
+
+更新网页使用 `corepack pnpm docker:update`：构建后仅替换网页容器，复用 Windows 执行端，运行中的任务继续执行；网页断线后会自动重连并恢复成果。Windows 执行端或电脑本身重启需要等待任务完成。
 
 ## 测试
 
